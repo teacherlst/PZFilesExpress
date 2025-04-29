@@ -16,9 +16,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdbool.h>
-#include "zlog.h"
-#define true 1
-#define false 0
+#include "cJSON.h"
+#include "error.h"
 #define SERVER_PORT 10001
 #define MAX_SOCKET_BUFFER_SIZE 500*1024
 #define SUBFILE_AMOUNT_MAX 1024
@@ -27,39 +26,37 @@
 #define MESSAGEFILENAME "./message.txt"
 #define DOWNLOAD 1
 #define UPLOAD 2
-#define CarOrUser 1 //人工运行为0，车辆运行为1
-#define CARCONFIGFILENAME "./carConfig.ini"
+#define CFGFILENAME "./carConfig.cfg"
+//UDP
+#define LOCAL_PORT 10313    // 本地接收端口
+#define REMOTE_PORT 10312   // 目标发送端口
+#define SEND_BUFFER_SIZE 9
+#define RECV_BUFFER_SIZE 31
 
-
-// #define ZLOG_INIT_FAILURE 0x01
-// #define AUTODOWNLOAD_FIFO_OPEN_FAILURE 0x02
-// #define AUTODOWNLOAD_THREAD_OPEN_FAILURE 0x03
-// #define MKYEARDIR_FAILURE 0x04
-// #define MKMONTHDIR_FAILURE 0x05
-
-
-#define FTPSOCKET_OPEN_FAILURE 0x0A
-#define DATASOCKET_OPEN_FAILURE 0x1A
-#define FTP_CONNECT_FAILURE 0x2A
-
-
-#define DDU_TO_FDL_START 0x01
-#define FDL_TO_DDU_START 0x02
-#define FDL_TO_DDU_END   0x03
-#define FDL_TO_DDU_ERROR 0x04
-#define DO_NOTHING 0x05
-
-typedef struct DDU_TO_FDL
+typedef struct 
 {
-    unsigned int command;
-    int speed;
-}DDU_TO_FDL;
+    char vcuIp[64];
+    int flashId;
+    char vcuName[32];
+    char vcuPasswd[32];
+    char remoteHostIp[64];
+    char remoteHostName[32];
+    char remoteHostPasswd[32];
+    char fdlSaveDir[128];
+    int hour;
+    int min;
+    int sec;
+    int sleepTime;
+    char lastTime[128];
+    int isInitDownload;
+}PZFilesExpressModel;
 
-typedef struct FDL_TO_DDU
+typedef struct 
 {
-    unsigned int command;
-}FDL_TO_DDU;
-
+    char year[32];
+    char month[32];
+    char day[32];
+}SystemTime;
 //FDL_READINFO
 typedef enum {
     READINFO = 0x01,
@@ -141,72 +138,36 @@ typedef struct
     char endTag[8];
 }TFDDownloadStatusFrame;
 
-typedef struct  {
-    int ftp_ControlSocket;
-    char targetIp[32];
-    char username[32];
-    char passwd[32];
-    char configFilePath[256];
-    char localFilePath[256];
-    int index;
-    int downloadFileAmount;
-}ThreadArgs;
+extern PZFilesExpressModel *model;
+extern int read_json_to_model(const char *filename, PZFilesExpressModel *model);
+extern int write_model_to_json(const char *filename, const PZFilesExpressModel *model);
+extern void printModel(const PZFilesExpressModel* model);
 
-typedef struct {
-    int opt_h;//help
-    int opt_v;//version
-    int opt_c;//configure
-    int opt_R;//ReadInfo
-    int opt_Dr;//DOWNLOADREQUEST请求帧
-    int opt_Ds;//DOWNLOADSTATUS请求帧
-    int opt_t;//time
-    int opt_f;//ftp
-}UserCmd;
-
-extern char carIp[32];
-extern int flashId;
-extern char carName[32];
-extern char carPasswd[32];
-extern char hostIp[32];
-extern char hostName[32];
-extern char hostPasswd[32];
-extern char fdlSaveDir[128];
-extern int hour;
-extern int min;
-extern int sec;
-extern int sleepTime;
-extern char start_Time[64];
-extern char end_Time[64];
-
-
-
+extern int sockfd;
+extern char fdlFileName[1024];
+extern SystemTime systemTime;
+extern TFDDownloadRequestFrame downloadRequestFrame;
+extern TFDDownloadStatusFrame downloadStatusFrame;
+extern TFDDownloadStatusFrame downloadStatusReceiveFrame;
 extern char socketBuffer[MAX_SOCKET_BUFFER_SIZE];
 extern char totalBlocks[BLOCKS_AMOUNT_IN_SUBFILE*SUBFILE_AMOUNT_MAX*sizeof(fl04_id_info_page)];
 extern char downloadTotalBlocks[BLOCKS_AMOUNT_IN_SUBFILE*SUBFILE_AMOUNT_MAX*sizeof(fl04_id_info_page)];
 extern int carBlocksAmount;
 extern fl04_id_info_page *carBlocks;
 extern char totalSubfiles[SUBFILE_AMOUNT_MAX*sizeof(TSubFile)];
-
-
-extern int readStringFromIni(const char *filename, const char *section, const char *key, char *output, size_t size);
-extern int writeStringToIni(const char *filename, const char *section, const char *key, const char *value);
-extern void readCarConfigFile(char *carConfigFileName_p);
-extern void readConfigFile(char *filename_p,char *targetIp_p,char *flashId_C_p);
 extern int offsetFile(const char *filename_p,char *targetStr);
-extern void printHelpDoc();
-extern void getIpAndId(char *str_p,char *targetIp_p,char *flashId_C_p);
-extern int connectServer(char *targetIp_p,int flashId_p,bool *ret_connectServer_p);
+extern int connectServer(char *carIp_p,int flashId_p);
 extern int gettimeStamp(char *time);
 
 typedef struct  {
-    int threadResult;
-    //int zlogInitialized;
-    int initDownload;
-}PingThreadArgs;
-extern FDL_TO_DDU fdl_to_ddu;
-extern DDU_TO_FDL ddu_to_fdl;
+    bool thread_started;
+    bool threadResult;
+}DownloadThreadArgs;
+extern char start_Time[64];
+extern char end_Time[64];
 extern int trainSpeed;
 extern void progress_Download_Or_Upload(int progress_p,int download_or_upload_p);
-extern int isUpTime(int hour_p,int min_p,int sec_p);
+extern bool isUpTime(int hour_p,int min_p,int sec_p);
+extern long getLocalFileSize(const char *fileName_p);
 
-#endif // GLOBAL_H
+#endif // 
