@@ -1,7 +1,7 @@
 #include "PzProcComClient.h"
 
 #define BUFFER_SIZE 1024    // 缓冲区大小
-PPCTask *task = NULL;
+PPCTask *task;
 
 void setFDLTaskProgress( pz_uint8_t stat)
 {
@@ -128,6 +128,22 @@ pz_uint16_t getTrainSpeed()
     return _speed;
 }
 
+pz_uint8_t getCabNum()
+{
+    if(task->task_initOk != 1) return 0;
+#ifdef __WIN32
+    WaitForSingleObject(task->recv_task->mutex, INFINITE);
+#endif
+#ifdef __linux__
+    pthread_mutex_lock(&task->recv_task->mutex);
+#endif
+    pz_uint8_t _cn = task->recv_task->pack->cab_num;
+#ifdef __linux__
+    pthread_mutex_unlock(&task->recv_task->mutex);
+#endif
+    return _cn;	
+}
+
 int initCliTask(const char* remote_ip,
 				handleSpeed hsfunc,
 				handleManCmd hmfunc)
@@ -142,7 +158,6 @@ int initCliTask(const char* remote_ip,
 #endif
     task->recv_task->pack = (DsToExPack*)malloc(sizeof(DsToExPack));
     memset(task->recv_task->pack,0,sizeof(DsToExPack));
-    task->recv_task->pack->speed = 0xFFFF;
 	//callback for speed and mancmd
 	if(hsfunc != NULL)
 		task->pSpeedCallBack = hsfunc;

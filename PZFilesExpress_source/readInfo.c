@@ -58,8 +58,9 @@ extern void sendReadInfo(){
     }
 
     unsigned int timetamp_2000_1_1_00_00_00 = 946656000;
+    bzero(totalBlocks,sizeof(totalBlocks));
+    blockTotal = 0;
     int ret_Total_Block = 0;
-    int tmp_total = 0;
     while (cnt > 10)
     {
         memset(&blockinfo,0,sizeof(char)*28);
@@ -83,47 +84,14 @@ extern void sendReadInfo(){
             //     htonl(blockinfo.erase_counter),
             //                     timestr);
             local_time = NULL;
-            memcpy(totalBlocks + tmp_total*28,&blockinfo,sizeof(fl04_id_info_page));
-            tmp_total += 1;
+            memcpy(totalBlocks + blockTotal*sizeof(fl04_id_info_page),&blockinfo,sizeof(fl04_id_info_page));
+            blockTotal += 1;
         }
         cnt--;
     }
-    carBlocksAmount = tmp_total;
-    carBlocks = malloc(sizeof(fl04_id_info_page)*tmp_total);
-    fl04_id_info_page blockinfo_2;
-    int sendReadInfo_i = 0;
-    for (sendReadInfo_i = 0; sendReadInfo_i < carBlocksAmount; sendReadInfo_i++) {
-        memset(&blockinfo_2, 0, sizeof(fl04_id_info_page));
-        memcpy(&blockinfo_2, totalBlocks + sendReadInfo_i * sizeof(fl04_id_info_page), sizeof(fl04_id_info_page));
-        memcpy(carBlocks + sendReadInfo_i,&blockinfo_2,sizeof(fl04_id_info_page));
-    }
-    writeBlkMsgToFile(totalBlocks,tmp_total);
-    dzlog_debug("成功从服务器读取块信息写入信息文件");
+    dzlog_debug("成功从服务器读取块信息");
     memcpy(ret_TFDReadInfoFrame_Struct.endTag,socketBuffer + totalTypes-8,sizeof(char)*8);
     if(strcmp(ret_TFDReadInfoFrame_Struct.endTag,"FDBODYE") != 0){
         longjmp(jump_buffer, RI_DATA_TAIL_ERR);
     }
-}
-
-static void writeBlkMsgToFile(char *downloadBlocks_p,int totalBlocks_p){
-    FILE *blockMessagefile;
-    // 文件路径
-    // 打开文件，如果文件不存在则创建，如果存在则覆盖
-    blockMessagefile = fopen(MESSAGEFILENAME, "w");
-    if (blockMessagefile == NULL) {
-        fopenFileErr(MESSAGEFILENAME);
-    }
-    fprintf(blockMessagefile,"blockAmount=%d\n",totalBlocks_p);
-    fl04_id_info_page blockinfo;
-    int writeBlockMessageToFile_i = 0;
-    for (writeBlockMessageToFile_i = 0; writeBlockMessageToFile_i < totalBlocks_p; writeBlockMessageToFile_i++) {
-        memset(&blockinfo, 0, sizeof(fl04_id_info_page));
-        memcpy(&blockinfo, downloadBlocks_p + writeBlockMessageToFile_i * sizeof(fl04_id_info_page), sizeof(fl04_id_info_page));
-        size_t writeSize = fwrite(&blockinfo, sizeof(fl04_id_info_page), 1, blockMessagefile);
-        fprintf(blockMessagefile,"\n");
-        if (writeSize != 1) {
-            fwriteFileErr(MESSAGEFILENAME);
-        }
-    }
-    fclose(blockMessagefile);
 }

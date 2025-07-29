@@ -5,6 +5,7 @@ static int ftp_TryLogin_Download = false;
 
 extern void sendDownloadRequest(){
     int total_dr = readBlockMessage(downloadTotalBlocks,start_Time,end_Time);
+    printf("total_dr = [%d]\n",total_dr);
     TFDFrameHead frameHead = {"FDHEADS",
                              htonl(DOWNLOADREQUEST),
                               "FDHEADE"};
@@ -69,49 +70,48 @@ extern void sendDownloadRequest(){
     }
     writeSubfileMessageToFile(totalSubfiles,totalSubfiles_i);
     dzlog_debug("成功从服务器读取subfile信息写入信息文件");
-
+    
     writeLogFile(downloadRequestReceiveFrame.path,fdlFileName);
     dzlog_debug("成功从服务器读取FDL或EVR配置文件并写入.(fdl/evr)文件");
 }
 
 static int readBlockMessage(char *downloadTotalBlocks_p,char *start_Time_p,char *end_Time_p){
     int downloadTotalBlocks_i = 0;
-    int tmp_total = 0;
+    // int tmp_total = 0;
 
     int time_s = gettimeStamp(start_Time_p);
     int time_e = gettimeStamp(end_Time_p);
 
-    if(access(MESSAGEFILENAME,F_OK) != 0){
-        longjmp(jump_buffer, DR_NO_MESSAGEFILE_ERR);
-    }
-    char *tmp_tar = "blockAmount=";
-    int offset = offsetFile(MESSAGEFILENAME,tmp_tar);
-    FILE *file = fopen(MESSAGEFILENAME, "r");
-    if (file == NULL) {
-        fopenFileErr(MESSAGEFILENAME);
-    }
-    if (fseek(file, offset, SEEK_SET) != 0) {
-        fseekFileErr(MESSAGEFILENAME);
-        fclose(file);
-    }
-    fscanf(file,"%d",&tmp_total);
+    // if(access(MESSAGEFILENAME,F_OK) != 0){
+    //     longjmp(jump_buffer, DR_NO_MESSAGEFILE_ERR);
+    // }
+    // char *tmp_tar = "blockAmount=";
+    // int offset = offsetFile(MESSAGEFILENAME,tmp_tar);
+    // FILE *file = fopen(MESSAGEFILENAME, "r");
+    // if (file == NULL) {
+    //     fopenFileErr(MESSAGEFILENAME);
+    // }
+    // if (fseek(file, offset, SEEK_SET) != 0) {
+    //     fseekFileErr(MESSAGEFILENAME);
+    //     fclose(file);
+    // }
+    // fscanf(file,"%d",&tmp_total);
     int readBlockMessage_i = 0;
-    for(readBlockMessage_i = 0;readBlockMessage_i < tmp_total;readBlockMessage_i++){
-        if (fseek(file, offset + 2 + readBlockMessage_i*28 + readBlockMessage_i*1, SEEK_SET) != 0) {
-            fseekFileErr(MESSAGEFILENAME);
-            fclose(file);
-        }
+    for(readBlockMessage_i = 0;readBlockMessage_i < blockTotal;readBlockMessage_i++){
+        // if (fseek(file, offset + 2 + readBlockMessage_i*28 + readBlockMessage_i*1, SEEK_SET) != 0) {
+        //     fseekFileErr(MESSAGEFILENAME);
+        //     fclose(file);
+        // }
         fl04_id_info_page blockinfo;
         memset(&blockinfo, 0, sizeof(fl04_id_info_page));
-        fread(&blockinfo,sizeof(fl04_id_info_page),1,file);
-            //printf("%u\n",htonl(blockinfo.first_timestamp));
-
+        // fread(&blockinfo,sizeof(fl04_id_info_page),1,file);
+        memcpy(&blockinfo,totalBlocks + readBlockMessage_i*sizeof(fl04_id_info_page),sizeof(fl04_id_info_page));
         if(htonl(blockinfo.first_timestamp) >= time_s && htonl(blockinfo.first_timestamp) <= time_e){
             memcpy(downloadTotalBlocks_p + downloadTotalBlocks_i*28,&blockinfo,sizeof(fl04_id_info_page));
             downloadTotalBlocks_i += 1;
         }
     }
-    fclose(file);
+    // fclose(file);
     return downloadTotalBlocks_i;
 }
 

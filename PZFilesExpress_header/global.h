@@ -17,7 +17,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include "cJSON.h"
-#include "error.h"
+#include "diyError.h"
 #define SERVER_PORT 10001
 #define MAX_SOCKET_BUFFER_SIZE 500*1024
 #define SUBFILE_AMOUNT_MAX 1024
@@ -46,8 +46,8 @@ typedef struct
     int hour;
     int min;
     int sec;
-    int sleepTime;
     char lastTime[128];
+    int day;
     int isInitDownload;
 }PZFilesExpressModel;
 
@@ -165,6 +165,7 @@ typedef struct  {
 }DownloadThreadArgs;
 extern char start_Time[64];
 extern char end_Time[64];
+extern int blockTotal;
 extern int trainSpeed;
 extern void progress_Download_Or_Upload(int progress_p,int download_or_upload_p);
 extern bool isUpTime(int hour_p,int min_p,int sec_p);

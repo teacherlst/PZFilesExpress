@@ -1,5 +1,5 @@
 /*
- * Copyright (c) [2025] [Liu Shitong]
+ * Copyright (c) [2025] [Liu Shitong Liu Ye]
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -21,8 +21,8 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * version:测试版:0.0.3
- * date:2025-4-29
+ * version:测试版:0.0.4
+ * date:2025-05-07
  */
 #include "global.h"
 #include "readInfo.h"
@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <arpa/inet.h>
 #include <fcntl.h>  // 用于非阻塞模式
 #include "PzTypes.h"
@@ -49,11 +50,13 @@ static void recvManCmd(pz_uint8_t cmd)
 	printf("there is cmd %d\n",cmd);
 }
 static int directory_exists(const char *path);
+static void deleteFdlFiles(const char* dirPath);
 static uint16_t crc16_false(unsigned char *puchMsg, unsigned int usDataLen);
-static void *downloadFileFunc(void *arg);
+static void downloadFileFunc(DownloadThreadArgs *arg);
 static char lastTime[256] = "";
 static u_int8_t fdlDownloadProgress = 0x55;
 static DownloadThreadArgs DlThreadArgs = {false,false};
+static pz_uint8_t oldManualCmd = false;
 int main(int argc,char *argv[]){
     int zlogId = dzlog_init("./zlog.conf", "PZFilesExpress");
     if (zlogId) {
@@ -68,10 +71,11 @@ int main(int argc,char *argv[]){
     printModel(model);
 
     printf("start init cli task..\n");
-    initCliTask("192.168.0.5",warningSpeed,recvManCmd);//server ip
+    initCliTask("127.0.0.1",warningSpeed,recvManCmd);//server ip
     printf("init cli task finished..\n");
     startCliTask();
     
+    bool m_totayDownload = false;
     char currentTime[256];//
     int consecutive_pings = 0;
     int tryTotal = 1;
@@ -82,36 +86,54 @@ int main(int argc,char *argv[]){
         sprintf(currentTime,"%04d/%02d/%02d-%02d:%02d:%02d",
             tm.tm_year+1900,tm.tm_mon+1,tm.tm_mday,
             tm.tm_hour,tm.tm_min,tm.tm_sec);
+        read_json_to_model(CFGFILENAME,model);
+        if(model->day != tm.tm_mday){
+            m_totayDownload = false;
+        }else{
+            m_totayDownload = true;
+        }
         char command[256];
         //sprintf(command, "ping -c 1 192.168.0.1 > /dev/null");
         sprintf(command, "ping -c 1 %s > /dev/null",model->vcuIp);
         int ping_result = system(command);
         if(ping_result == 0){
             consecutive_pings++;
+            printf("manual_cmd : [%d] oldManualCmd : [%d] ",task->recv_task->pack->manual_cmd,oldManualCmd);
+            printf("TrainNum : [%u] CabNum : [%u]\n",getSrvTrainNum(),getCabNum());
+            bool autoRet = isUpTime(model->hour,model->min,model->sec) && (m_totayDownload == false);
+            bool manualRet = (task->recv_task->pack->manual_cmd == true) && (oldManualCmd == false);
             if (consecutive_pings >= CONSECUTIVE_PINGS 
                 && !DlThreadArgs.thread_started 
-                && isUpTime(model->hour,model->min,model->sec) == true
-                && getTrainSpeed() == 0){
+                && (autoRet || manualRet)
+                && getTrainSpeed() == 0
+                && getSrvTrainNum() != 0){
+                if(getSrvTrainNum() > 0 && getSrvTrainNum() < 10){
+                    sprintf(model->remoteHostName,"NJL50%u0%u",getSrvTrainNum(),getCabNum());
+                }else{
+                    sprintf(model->remoteHostName,"NJL5%u0%u",getSrvTrainNum(),getCabNum());
+                }
                 dzlog_debug("第%d次下载开始",tryTotal);
-                pthread_create(&thread_id, NULL, downloadFileFunc, (void *)&DlThreadArgs);
-                pthread_join(thread_id, NULL);
+                downloadFileFunc(&DlThreadArgs);
                 if(DlThreadArgs.threadResult == true){
                     consecutive_pings = 0;
                     DlThreadArgs.threadResult = false;
-                    dzlog_debug("下载成功");
+                    dzlog_debug("当天文件处理成功");
+                    model->day = tm.tm_mday;
+                    write_model_to_json(CFGFILENAME,model);
                     tryTotal = 1;
-                    sleep(model->sleepTime);
                 }else if(DlThreadArgs.threadResult == false){
                     dzlog_debug("第%d次下载失败",tryTotal);
                     tryTotal++;
                 }
                 if(tryTotal > MAX_RETRY){
                     dzlog_debug("当天下载失败");
+                    model->day = tm.tm_mday;
+                    write_model_to_json(CFGFILENAME,model);
                     consecutive_pings = 0;
                     tryTotal = 1;
-                    sleep(model->sleepTime);
                 }
             }
+            oldManualCmd = task->recv_task->pack->manual_cmd;
         }else{
             consecutive_pings = 0;
         }
@@ -129,8 +151,8 @@ static int directory_exists(const char *path) {
     return S_ISDIR(info.st_mode);
 }
 
-static void *downloadFileFunc(void *arg) {
-    DownloadThreadArgs *args = (DownloadThreadArgs *)arg;
+static void downloadFileFunc(DownloadThreadArgs *args) {
+    // DownloadThreadArgs *args = (DownloadThreadArgs *)arg;
     char timeStr[256];
     char blockMaxTime[256];
     char blockMinTime[256];
@@ -160,6 +182,9 @@ static void *downloadFileFunc(void *arg) {
             dzlog_error("创建日志文件夹失败");
         }
     }
+
+    deleteFdlFiles(log_Path);
+
     sockfd = connectServer(model->vcuIp,model->flashId);
     if(sockfd <= 0){
         longjmp(jump_buffer,RI_CONNECT_SERVER_ERR);
@@ -167,18 +192,24 @@ static void *downloadFileFunc(void *arg) {
     sendReadInfo();
     close(sockfd);
 
-    unsigned int max_first_timestamp = htonl((carBlocks)->first_timestamp);
-    unsigned int min_first_timestamp = htonl((carBlocks)->first_timestamp);
+    fl04_id_info_page blockinfo;
+    memset(&blockinfo, 0, sizeof(fl04_id_info_page));
+    memcpy(&blockinfo, totalBlocks, sizeof(fl04_id_info_page));
+    unsigned int max_first_timestamp = htonl((blockinfo).first_timestamp);
+    unsigned int min_first_timestamp = htonl((blockinfo).first_timestamp);
+
     int thread_function_i = 0;
-    for(thread_function_i = 0;thread_function_i < carBlocksAmount - 1;thread_function_i++){
-        if(max_first_timestamp < htonl((carBlocks + thread_function_i + 1)->first_timestamp)){
-            max_first_timestamp = htonl((carBlocks + thread_function_i + 1)->first_timestamp);
+    for (thread_function_i = 0; thread_function_i < blockTotal - 1; thread_function_i++) {
+        memset(&blockinfo, 0, sizeof(fl04_id_info_page));
+        memcpy(&blockinfo, totalBlocks + (thread_function_i+1)* sizeof(fl04_id_info_page), sizeof(fl04_id_info_page));
+        if(max_first_timestamp < htonl((blockinfo).first_timestamp)){
+            max_first_timestamp = htonl((blockinfo).first_timestamp);
         }
-        if(min_first_timestamp > htonl((carBlocks + thread_function_i + 1)->first_timestamp)){
-            min_first_timestamp = htonl((carBlocks + thread_function_i + 1)->first_timestamp);
+        if(min_first_timestamp > htonl((blockinfo).first_timestamp)){
+            min_first_timestamp = htonl((blockinfo).first_timestamp);
         }
     }
-    //printf("%u %u \n",max_first_timestamp,min_first_timestamp);
+
     time_t timetamp_max_first_timestamp = max_first_timestamp;
     struct tm tm_max_first_timestamp = *localtime(&timetamp_max_first_timestamp);
     sprintf(blockMaxTime,"%04d-%02d-%02d_%02d-%02d-%02d",
@@ -215,7 +246,7 @@ static void *downloadFileFunc(void *arg) {
     if(sockfd <= 0){
         longjmp(jump_buffer,DS_CONNECT_SERVER_ERR);
     }
-    sendDownloadStatus(fdlFileName);
+    sendDownloadStatus();
     free(downloadStatusFrame.subfiles);
     free(downloadStatusReceiveFrame.subfiles);
     close(sockfd);
@@ -241,109 +272,8 @@ static void *downloadFileFunc(void *arg) {
     args->thread_started = false;
 }
 
-// static void *udpThread(void *arg){
-//     int sockfd;
-//     struct sockaddr_in local_addr, remote_addr;
-//     socklen_t addr_len = sizeof(remote_addr);
-//     char recvBuffer[RECV_BUFFER_SIZE];
-
-//     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-//     if (sockfd < 0) {
-//         perror("socket creation failed");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // 绑定本地接收端口
-//     memset(&local_addr, 0, sizeof(local_addr));
-//     local_addr.sin_family = AF_INET;
-//     local_addr.sin_addr.s_addr = INADDR_ANY;
-//     local_addr.sin_port = htons(LOCAL_PORT);
-
-//     if (bind(sockfd, (const struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
-//         perror("bind failed");
-//         close(sockfd);
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // 设置远程发送地址
-//     memset(&remote_addr, 0, sizeof(remote_addr));
-//     remote_addr.sin_family = AF_INET;
-//     remote_addr.sin_port = htons(REMOTE_PORT);
-//     inet_pton(AF_INET, REMOTE_IP, &remote_addr.sin_addr);
-
-//     // 设置非阻塞模式
-//     fcntl(sockfd, F_SETFL, O_NONBLOCK);
-
-//     printf("UDP Send/Receive started on port %d...\n", LOCAL_PORT);
-
-//     while (true) {
-//         // 发送数据
-//         unsigned char sendBuffer[SEND_BUFFER_SIZE] = {0};  // UDP 数据包
-
-//         // 填充协议数据
-//         sendBuffer[0] = 0xFA;    // 协议开始符
-//         sendBuffer[1] = 0x01;    // 功能码
-//         sendBuffer[2] = fdlDownloadProgress;    // FDL下载进度
-//         sendBuffer[3] = 0x00;    // EVR下载进度
-//         sendBuffer[4] = 0x01;    // 列车号
-//         sendBuffer[5] = 0x00;    // 保留字段
-
-//         // 计算 CRC-16 校验
-//         uint16_t crc = crc16_false(sendBuffer, 6);
-//         sendBuffer[6] = (crc >> 8) & 0xFF;  // 高字节
-//         sendBuffer[7] = crc & 0xFF;         // 低字节
-
-//         sendBuffer[8] = 0xFB;    // 协议结束符
-
-//         sendto(sockfd, sendBuffer, strlen(sendBuffer), 0, (struct sockaddr *)&remote_addr, addr_len);
-//         printf("Sent: %s\n", sendBuffer);
-
-//         // 接收数据（非阻塞）
-//         memset(recvBuffer, 0, RECV_BUFFER_SIZE);
-//         ssize_t recv_len = recvfrom(sockfd, recvBuffer, RECV_BUFFER_SIZE, 0, 
-//                                     (struct sockaddr *)&remote_addr, &addr_len);
-//         if (recv_len != RECV_BUFFER_SIZE) {
-//             printf("Invalid packet size: %zd\n", recv_len);
-//             continue;
-//         }
-
-//         // 解析数据包
-//         if (recvBuffer[0] != 0xFA || recvBuffer[30] != 0xFB) {
-//             printf("Invalid packet format!\n");
-//             continue;
-//         }
-
-//         uint16_t received_crc = (recvBuffer[28] << 8) | recvBuffer[29];
-//         uint16_t calculated_crc = crc16_false(recvBuffer, 28);
-
-//         printf("Received Packet from %s:%d\n", inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
-//         printf("功能码: 0x%02X\n", recvBuffer[1]);
-//         printf("数据序号: %u\n", (recvBuffer[2] << 8) | recvBuffer[3]);
-//         printf("数据长度: %u\n", (recvBuffer[4] << 8) | recvBuffer[5]);
-//         printf("司机室1激活: %u\n", recvBuffer[6]);
-//         printf("司机室6激活: %u\n", recvBuffer[7]);
-//         printf("速度: %u km/h\n", (recvBuffer[8] << 8) | recvBuffer[9]);
-//         printf("手动下载指令: %u\n", recvBuffer[10]);
-//         printf("列车号: %u\n", recvBuffer[11]);
-
-//         if (received_crc == calculated_crc) {
-//             printf("CRC 校验成功\n");
-//         } else {
-//             printf("CRC 校验失败！(Received: 0x%04X, Expected: 0x%04X)\n", received_crc, calculated_crc);
-//         }
-
-//         printf("-----------------------------------\n");
-
-//         // 周期500ms
-//         usleep(500);
-//     }
-
-//     close(sockfd);
-// }
-
 static uint16_t crc16_false(unsigned char *puchMsg, unsigned int usDataLen)
 {
-
     unsigned short wCRCin = 0xFFFF;
     unsigned short wCPoly = 0x1021;
     unsigned char wChar = 0;
@@ -361,4 +291,31 @@ static uint16_t crc16_false(unsigned char *puchMsg, unsigned int usDataLen)
         }
     }
     return (wCRCin) ;
+}
+
+
+static void deleteFdlFiles(const char* dirPath) {
+    DIR *dir = opendir(dirPath);
+    if (!dir) {
+        perror("打开目录失败");
+        return;
+    }
+
+    struct dirent *entry;
+    char filePath[256];
+
+    while (entry = readdir(dir)) {
+        if (entry->d_type == DT_REG) { // 只处理普通文件
+            const char *ext = strrchr(entry->d_name, '.');
+            if (ext && strcmp(ext, ".fdl") == 0) {
+                snprintf(filePath, sizeof(filePath), "%s/%s", dirPath, entry->d_name);
+                if (unlink(filePath)) {
+                    perror("删除文件失败");
+                } else {
+                    printf("已删除: %s\n", filePath);
+                }
+            }
+        }
+    }
+    closedir(dir);
 }

@@ -150,6 +150,7 @@ extern void ftp_download(const char *remote_file, const char *local_file){
 
                 fclose(file);
                 // 接收文件下载完成的响应
+                close(ftp_client.datafd);
                 recv(ftp_client.ctrlfd, response, sizeof(response), 0);
 
                 long temp_file_size = getLocalFileSize(local_file);
@@ -196,8 +197,10 @@ extern void ftp_download(const char *remote_file, const char *local_file){
                 }
 
                 fclose(file);
+                close(ftp_client.datafd);
+                recv(ftp_client.ctrlfd, response, sizeof(response), 0);
+
                 long temp_file_size = getLocalFileSize(local_file);
-                printf("temp_file_size:%ld remoteFileSize:%ld\n",temp_file_size,remoteFileSize);
                 if(temp_file_size == remoteFileSize){
                     download_ret = true;
                     dzlog_info("下载文件%s成功",remote_file);
@@ -282,6 +285,7 @@ extern void ftp_upload(const char *local_file, const char *remote_file){
 
                 fclose(file);
                 // 接收文件下载完成的响应
+                close(ftp_client.datafd);
                 memset(response, 0, sizeof(response));
                 recv(ftp_client.ctrlfd, response, sizeof(response), 0);
 
@@ -327,10 +331,13 @@ extern void ftp_upload(const char *local_file, const char *remote_file){
 
                 fclose(file);
                 // 接收文件下载完成的响应
+                close(ftp_client.datafd);
                 memset(response, 0, sizeof(response));
                 recv(ftp_client.ctrlfd, response, sizeof(response), 0);
 
                 remoteFileSize = ftp_size(ftp_client.ctrlfd,remote_file);
+                dzlog_info("remoteFileSize : %ld localFileSize : %ld",remoteFileSize,localFileSize);
+
                 if (remoteFileSize == localFileSize) {
                     //printf("File exists. Size: %ld bytes.\n", file_size);
                     upload_ret = true;

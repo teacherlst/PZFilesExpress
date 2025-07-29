@@ -39,7 +39,8 @@ typedef struct
    pz_int16_t  speed;
    pz_uint8_t  manual_cmd;
    pz_uint8_t  train_num;
-   pz_uint8_t  reserved[16];
+   pz_uint8_t  cab_num;
+   pz_uint8_t  reserved[15];
    pz_int16_t  crc_res;
 }DsToExPack;//DataSource To PzFilesExpress
 

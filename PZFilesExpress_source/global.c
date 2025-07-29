@@ -6,7 +6,7 @@ char fdlFileName[1024] = "";
 SystemTime systemTime = {0};
 char start_Time[64] = "";
 char end_Time[64] = "";
-
+int blockTotal = 0;
 TFDDownloadRequestFrame downloadRequestFrame = {"FDBODYS",
                                                 0,
                                                 NULL,
@@ -53,9 +53,8 @@ extern int connectServer(char *vcuIp_p,int flashId_p){
     ret = connect(ret_sockfd,(struct sockaddr*)&server_addr,sizeof(server_addr));
     if(ret < 0){
         longjmp(jump_buffer,CONNECT_ERR);
-        close(ret_sockfd);
     }
-    printf("*********************************服务器连接成功*********************************\n");
+    dzlog_debug("*********************************服务器连接成功*********************************\n");
     return ret_sockfd;
 }
 
@@ -241,14 +240,14 @@ extern int read_json_to_model(const char *filename, PZFilesExpressModel *model) 
     strcpy(model->vcuName, cJSON_GetObjectItem(item, "vcuName")->valuestring);
     strcpy(model->vcuPasswd, cJSON_GetObjectItem(item, "vcuPasswd")->valuestring);
     strcpy(model->remoteHostIp, cJSON_GetObjectItem(item, "remoteHostIp")->valuestring);
-    strcpy(model->remoteHostName, cJSON_GetObjectItem(item, "remoteHostName")->valuestring);
+    // strcpy(model->remoteHostName, cJSON_GetObjectItem(item, "remoteHostName")->valuestring);
     strcpy(model->remoteHostPasswd, cJSON_GetObjectItem(item, "remoteHostPasswd")->valuestring);
     strcpy(model->fdlSaveDir, cJSON_GetObjectItem(item, "fdlSaveDir")->valuestring);
     model->hour = cJSON_GetObjectItem(item, "hour")->valueint;
     model->min = cJSON_GetObjectItem(item, "min")->valueint;
     model->sec = cJSON_GetObjectItem(item, "sec")->valueint;
-    model->sleepTime = cJSON_GetObjectItem(item, "sleepTime")->valueint;
     strcpy(model->lastTime, cJSON_GetObjectItem(item, "lastTime")->valuestring);
+    model->day = cJSON_GetObjectItem(item, "day")->valueint;
     model->isInitDownload = cJSON_GetObjectItem(item, "isInitDownload")->valueint;
 
     cJSON_Delete(root);
@@ -265,14 +264,14 @@ extern int write_model_to_json(const char *filename, const PZFilesExpressModel *
     cJSON_AddStringToObject(item, "vcuName", model->vcuName);
     cJSON_AddStringToObject(item, "vcuPasswd", model->vcuPasswd);
     cJSON_AddStringToObject(item, "remoteHostIp", model->remoteHostIp);
-    cJSON_AddStringToObject(item, "remoteHostName", model->remoteHostName);
+    // cJSON_AddStringToObject(item, "remoteHostName", model->remoteHostName);
     cJSON_AddStringToObject(item, "remoteHostPasswd", model->remoteHostPasswd);
     cJSON_AddStringToObject(item, "fdlSaveDir", model->fdlSaveDir);
     cJSON_AddNumberToObject(item, "hour", model->hour);
     cJSON_AddNumberToObject(item, "min", model->min);
     cJSON_AddNumberToObject(item, "sec", model->sec);
-    cJSON_AddNumberToObject(item, "sleepTime", model->sleepTime);
     cJSON_AddStringToObject(item, "lastTime", model->lastTime);
+    cJSON_AddNumberToObject(item, "day", model->day);
     cJSON_AddNumberToObject(item, "isInitDownload", model->isInitDownload);
 
     cJSON_AddItemToArray(array, item);
@@ -306,18 +305,18 @@ extern void printModel(const PZFilesExpressModel* model) {
     printf("VCU Name: %s\n", model->vcuName);
     printf("VCU Password: %s\n", model->vcuPasswd);
     printf("Remote Host IP: %s\n", model->remoteHostIp);
-    printf("Remote Host Name: %s\n", model->remoteHostName);
+    // printf("Remote Host Name: %s\n", model->remoteHostName);
     printf("Remote Host Password: %s\n", model->remoteHostPasswd);
     printf("FDL Save Directory: %s\n", model->fdlSaveDir);
     printf("Time (H:M:S): %02d:%02d:%02d\n", model->hour, model->min, model->sec);
-    printf("Sleep Time: %d\n", model->sleepTime);
     printf("Last Time: %s\n", model->lastTime);
+    printf("day: %d\n", model->day);
     printf("Is Init Download: %d\n", model->isInitDownload);
 }
 
 extern long getLocalFileSize(const char *fileName_p){
     if (access(fileName_p, F_OK) != 0) {
-        fseekFileErr(fileName_p);
+        return 0;
     }
     struct stat st;
     if (stat(fileName_p, &st) == 0) {
