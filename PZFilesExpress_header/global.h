@@ -166,6 +166,7 @@ typedef struct  {
 extern char start_Time[64];
 extern char end_Time[64];
 extern int blockTotal;
+extern int subfileTotal;
 extern int trainSpeed;
 extern void progress_Download_Or_Upload(int progress_p,int download_or_upload_p);
 extern bool isUpTime(int hour_p,int min_p,int sec_p);

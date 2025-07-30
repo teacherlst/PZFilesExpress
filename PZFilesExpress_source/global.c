@@ -7,6 +7,7 @@ SystemTime systemTime = {0};
 char start_Time[64] = "";
 char end_Time[64] = "";
 int blockTotal = 0;
+int subfileTotal = 0;
 TFDDownloadRequestFrame downloadRequestFrame = {"FDBODYS",
                                                 0,
                                                 NULL,
@@ -96,87 +97,19 @@ extern int gettimeStamp(char *time){
 
 
 extern void progress_Download_Or_Upload(int progress_p,int download_or_upload_p){
-    int Ten_progress = progress_p/10;
-    if(download_or_upload_p == 1){
-        switch (Ten_progress)
-        {
-            case 0:
-                printf("\r文件正在下载[#---------%d%%]",progress_p);
-                break;
-            case 1:
-                printf("\r文件正在下载[#---------%d%%]",progress_p);
-                break;
-            case 2:
-                printf("\r文件正在下载[##--------%d%%]",progress_p);
-                break;
-            case 3:
-                printf("\r文件正在下载[###-------%d%%]",progress_p);
-                break;
-            case 4:
-                printf("\r文件正在下载[####------%d%%]",progress_p);
-                break;
-            case 5:
-                printf("\r文件正在下载[#####-----%d%%]",progress_p);
-                break;
-            case 6:
-                printf("\r文件正在下载[######----%d%%]",progress_p);
-                break;
-            case 7:
-                printf("\r文件正在下载[#######---%d%%]",progress_p);
-                break;
-            case 8:
-                printf("\r文件正在下载[########--%d%%]",progress_p);
-                break;
-            case 9:
-                printf("\r文件正在下载[#########-%d%%]",progress_p);
-                break;
-            case 10:
-                printf("\r文件下载完成[##########%d%%]\n",progress_p);
-                break;
-            default:
-                break;
-        }
-    }else{
-        switch (Ten_progress)
-        {
-            case 0:
-                printf("\r文件正在上传[#---------%d%%]",progress_p);
-                break;
-            case 1:
-                printf("\r文件正在上传[#---------%d%%]",progress_p);
-                break;
-            case 2:
-                printf("\r文件正在上传[##--------%d%%]",progress_p);
-                break;
-            case 3:
-                printf("\r文件正在上传[###-------%d%%]",progress_p);
-                break;
-            case 4:
-                printf("\r文件正在上传[####------%d%%]",progress_p);
-                break;
-            case 5:
-                printf("\r文件正在上传[#####-----%d%%]",progress_p);
-                break;
-            case 6:
-                printf("\r文件正在上传[######----%d%%]",progress_p);
-                break;
-            case 7:
-                printf("\r文件正在上传[#######---%d%%]",progress_p);
-                break;
-            case 8:
-                printf("\r文件正在上传[########--%d%%]",progress_p);
-                break;
-            case 9:
-                printf("\r文件正在上传[#########-%d%%]",progress_p);
-                break;
-            case 10:
-                printf("\r文件上传完成[##########%d%%]\n",progress_p);
-                break;
-            default:
-                break;
-        }
-    }
-    fflush(stdout);
+    int Ten_progress = progress_p / 10;
+    const char *statusStr[] = {
+        "#---------", "#---------", "##--------", "###-------", "####------",
+        "#####-----", "######----", "#######---", "########--", "#########-",
+        "##########"
+    };
+
+    if (download_or_upload_p == 1)
+        fprintf(stderr,"\r文件正在下载[%s%d%%]", statusStr[Ten_progress], progress_p);
+    else
+        fprintf(stderr,"\r文件正在上传[%s%d%%]", statusStr[Ten_progress], progress_p);
+
+    fflush(stderr);
 }
 
 extern bool isUpTime(int hour_p,int min_p,int sec_p){
@@ -240,7 +173,6 @@ extern int read_json_to_model(const char *filename, PZFilesExpressModel *model) 
     strcpy(model->vcuName, cJSON_GetObjectItem(item, "vcuName")->valuestring);
     strcpy(model->vcuPasswd, cJSON_GetObjectItem(item, "vcuPasswd")->valuestring);
     strcpy(model->remoteHostIp, cJSON_GetObjectItem(item, "remoteHostIp")->valuestring);
-    // strcpy(model->remoteHostName, cJSON_GetObjectItem(item, "remoteHostName")->valuestring);
     strcpy(model->remoteHostPasswd, cJSON_GetObjectItem(item, "remoteHostPasswd")->valuestring);
     strcpy(model->fdlSaveDir, cJSON_GetObjectItem(item, "fdlSaveDir")->valuestring);
     model->hour = cJSON_GetObjectItem(item, "hour")->valueint;

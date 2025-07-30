@@ -242,18 +242,13 @@ static void downloadFileFunc(DownloadThreadArgs *args) {
     free(downloadRequestFrame.blocks);
     close(sockfd);
 
-    sockfd = connectServer(model->vcuIp,model->flashId);
-    if(sockfd <= 0){
-        longjmp(jump_buffer,DS_CONNECT_SERVER_ERR);
-    }
     sendDownloadStatus();
-    free(downloadStatusFrame.subfiles);
-    free(downloadStatusReceiveFrame.subfiles);
-    close(sockfd);
     
     char remote_file_name[BUFFER_SIZE];
     sprintf(remote_file_name,"%s%s/%s/%s(%s)%s",model->fdlSaveDir,systemTime.year,systemTime.month,timeRange,timeStr,".fdl");
     ftp_upload(fdlFileName,remote_file_name);
+    remove(fdlFileName);
+    
     if(carBlocks != NULL){
         free(carBlocks);
     }
